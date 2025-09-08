@@ -129,7 +129,7 @@ Server starts on default port 3000. But you can change it in main.cpp.
 Try with:
 
 ```bash
-curl http://localhost:3080/
+curl http://localhost:3000/
 ```
 
 ---
