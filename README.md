@@ -125,11 +125,11 @@ cd ..
 /build/adaptive-cpp-http-server.exe
 ```
 
-Server starts on default port 8080.
+Server starts on default port 3000. But you can change it in main.cpp.
 Try with:
 
 ```bash
-curl http://localhost:8080/
+curl http://localhost:3080/
 ```
 
 ---
