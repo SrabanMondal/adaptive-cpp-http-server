@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-grid">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Aurora UI — Home</title>
+  <link rel="stylesheet" href="/neon.css" />
+  <meta name="theme-color" content="#0a0a0f" />
+</head>
+<body>
+  <header class="nav">
+    <div class="wrap">
+      <div class="brand"><span class="dot"></span> AURORA UI</div>
+      <nav>
+        <a href="/index.html">Home</a>
+        <a href="/about.html">About</a>
+        <a href="https://github.com/SrabanMondal" target="_blank" rel="noopener">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="wrap hero-card">
+        <span class="kicker">Custom C++ Web Server</span>
+        <h1 class="h1"><span class="glow">Aurora</span> UI for High-Performance Servers</h1>
+        <p class="sub">A sleek, responsive, and modern interface powered by HTML, CSS, and JavaScript — running seamlessly on a C++ backend.</p>
+        <div class="actions">
+          <a class="btn primary" href="/about.html">Explore Features</a>
+          <a class="btn ghost" href="#features">Learn More</a>
+        </div>
+        <div class="hero-img">
+          <img src="/assets/hero.jpg" alt="Abstract hero image" loading="eager" />
+        </div>
+      </div>
+    </section>
+
+    <section id="features" class="section">
+      <div class="wrap">
+        <h2>Key Highlights</h2>
+        <div class="cards">
+          <article class="card">
+            <h3>Modern Design</h3>
+            <p>Neon gradients and glassmorphism combined for a professional look.</p>
+          </article>
+          <article class="card">
+            <h3>Fully Responsive</h3>
+            <p>Grid-based layout adapts across all devices and screen sizes.</p>
+          </article>
+          <article class="card">
+            <h3>Lightweight</h3>
+            <p>Pure HTML/CSS/JS — optimized for custom C++ web servers.</p>
+          </article>
+          <article class="card">
+            <h3>Dynamic Demo</h3>
+            <p>API integration example fetching data directly from the server.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- API Demo Section -->
+    <section id="api-demo" class="section">
+      <div class="wrap">
+        <h2>Live API Integration</h2>
+        <p class="sub">Below is data fetched dynamically from the same C++ server:</p>
+        <div class="card" id="apiResult">Loading data from API...</div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">© <span id="year"></span> Aurora UI. All rights reserved.</footer>
+  <script src="/app.js"></script>
+</body>
+</html>
