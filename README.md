@@ -203,7 +203,7 @@ The server was benchmarked with wrk to measure raw throughput.
 wrk -t8 -c200 -d30s http://127.0.0.1:3000/
 ```
 
-Here’s a sample wrk benchmark run:
+Here’s a sample wrk benchmark run on my ubuntu wsl on private ip:
 ![wrk benchmark result](benchmarks/wrk_sample.png)
 
 
@@ -224,6 +224,6 @@ Feel free to fork the repo and submit a PR.
 
 ## 📜 License
 
-MIT License © 2025 Sraban Mondal
+GNU License © 2025 Sraban Mondal
 
 This project bridges the gap between low-level systems programming and high-level web development.
