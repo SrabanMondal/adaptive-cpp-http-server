@@ -88,7 +88,7 @@ class Server{
     std::atomic<int> activeClients{0};
     IpRateLimiter ipLimiter; 
     Router& router;
-    int MAX_CLIENTS=10000;
+    int MAX_CLIENTS=100000;
     void workerThread(HANDLE hiocp);
     public:
         SOCKET serverSocket;

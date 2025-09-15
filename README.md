@@ -187,6 +187,36 @@ router.addRoute("/putData", HttpMethod::POST, [](const HttpRequest& req) {
 
 - Scalable abstraction → Beginner-friendly for API devs, yet built on low-level IOCP for performance.
 
+## 📊 Benchmarks
+
+The server was benchmarked with wrk to measure raw throughput.
+
+### Environment
+
+- OS: Windows 11
+- CPU: Intel i5-12400, 16 GB RAM
+- Build: C++ (MinGW), Windows IOCP
+
+### Command
+
+```bash
+wrk -t8 -c200 -d30s http://127.0.0.1:3000/
+```
+
+Here’s a sample wrk benchmark run:
+![wrk benchmark result](benchmarks/wrk_sample.png)
+
+
+### Result (baseline, blocking send, no separation of concerns)
+
+**⚡ ~8000 requests/sec sustained**
+Keep-alive connections enabled
+
+Even with a blocking send and no dedicated send pipeline,
+the server already achieves ~8.5k requests/sec on Windows IOCP.
+With non-blocking WSASend + zero-copy (TransmitFile), much higher throughput is expected.
+
+
 ## 🤝 Contributing
 
 Contributions, issues, and feature requests are welcome!
