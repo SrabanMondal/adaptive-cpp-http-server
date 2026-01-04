@@ -1,4 +1,4 @@
-# 🚀 Adaptive C++ HTTP Server (from scratch)
+# Adaptive C++ HTTP Server (from scratch)
 
 ![C++](https://img.shields.io/badge/C++-20-blue.svg)
 ![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)
@@ -11,7 +11,7 @@ It is lightweight, low-level, and designed to handle high concurrency with adapt
 
 ---
 
-## ✨ Key Features
+## Key Features
 
 - **Custom HTTP Server in C++**
   - Built using raw sockets and Windows **IOCP (I/O Completion Ports)**
@@ -44,7 +44,7 @@ It is lightweight, low-level, and designed to handle high concurrency with adapt
 
 ---
 
-## ⚙️ Architecture Overview
+## Architecture Overview
 
 1. **Connection Lifecycle**
    - Client connects → checked by **IPLimiter + admission control**
@@ -70,7 +70,7 @@ flowchart LR
 
 ---
 
-## 📊 Why is this Unique?
+## Why is this Unique?
 
 - Most developers never touch raw server internals — they just deploy APIs on existing frameworks.
 - Here, the **entire HTTP server core** was implemented manually in **C++**, a low-level systems language.
@@ -83,7 +83,7 @@ This isn’t just another “toy server” — it demonstrates how **production-
 
 ---
 
-## 🚀 Future Improvements
+## Future Improvements
 
 This project takes a different route: we **built the web server itself** — from scratch, in pure **C++**.
 
@@ -95,7 +95,7 @@ This project takes a different route: we **built the web server itself** — fro
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 - **Language:** C++20
 - **Concurrency Model:** IOCP (Windows I/O Completion Ports)  
@@ -104,7 +104,7 @@ This project takes a different route: we **built the web server itself** — fro
 
 ---
 
-## 📦 Getting Started
+## Getting Started
 
 Note: It will work in windows only, and it will need C++20 version with windows API. You don't need to do anything, just get mingw latest compiler from winlibs.com.
 
@@ -134,7 +134,7 @@ curl http://localhost:3000/
 
 ---
 
-## 🎯 Developer-Friendly API (Express.js Style)
+## Developer-Friendly API (Express.js Style)
 
 This server isn’t just sockets and bytes — it comes with a **clean, high-level API** inspired by popular web frameworks like **Express.js**.
 
@@ -177,7 +177,7 @@ router.addRoute("/putData", HttpMethod::POST, [](const HttpRequest& req) {
 
 ---
 
-## 🚀 Why this matters
+## Why this matters
 
 - Plug-and-play routes → Add GET, POST, PUT, DELETE handlers with just lambdas.
 
@@ -187,7 +187,7 @@ router.addRoute("/putData", HttpMethod::POST, [](const HttpRequest& req) {
 
 - Scalable abstraction → Beginner-friendly for API devs, yet built on low-level IOCP for performance.
 
-## 📊 Benchmarks
+## Benchmarks
 
 The server was benchmarked with wrk to measure raw throughput.
 
@@ -206,23 +206,21 @@ wrk -t8 -c200 -d30s http://127.0.0.1:3000/
 Here’s a sample wrk benchmark run on my ubuntu wsl on private ip:
 ![wrk benchmark result](benchmarks/wrk_sample.png)
 
-
 ### Result (baseline, blocking send, no separation of concerns)
 
-**⚡ ~8000 requests/sec sustained**
+**~8000 requests/sec sustained**
 Keep-alive connections enabled
 
 Even with a blocking send and no dedicated send pipeline,
 the server already achieves ~8.5k requests/sec on Windows IOCP.
 With non-blocking WSASend + zero-copy (TransmitFile), much higher throughput is expected.
 
-
-## 🤝 Contributing
+## Contributing
 
 Contributions, issues, and feature requests are welcome!
 Feel free to fork the repo and submit a PR.
 
-## 📜 License
+## License
 
 GNU License © 2025 Sraban Mondal
 
