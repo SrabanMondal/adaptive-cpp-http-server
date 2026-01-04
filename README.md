@@ -208,11 +208,11 @@ Here’s a sample wrk benchmark run on my ubuntu wsl on private ip:
 
 ### Result (baseline, blocking send, no separation of concerns)
 
-**~8000 requests/sec sustained**
+**average ~8000 requests/sec sustained**
 Keep-alive connections enabled
 
 Even with a blocking send and no dedicated send pipeline,
-the server already achieves ~8.5k requests/sec on Windows IOCP.
+the server already achieves peak ~8.1k requests/sec on Windows IOCP.
 With non-blocking WSASend + zero-copy (TransmitFile), much higher throughput is expected.
 
 ## Contributing
