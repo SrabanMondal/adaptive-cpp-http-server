@@ -7,6 +7,8 @@
 #include<chrono>
 #include "adaptivelimit.hpp"
 
+enum class IoOpType { RECV, SEND };
+
 struct ConnectionContext {
     int requestCount = 0;
     std::chrono::steady_clock::time_point windowStart;
@@ -16,9 +18,11 @@ struct ConnectionContext {
     std::vector<char> bodyBuffer;
     size_t expectedBody = 0;
     std::string contentType;
-    //AdaptiveState adaptive;
     std::string peerIp;
     bool headerComplete = false;
+    
+    std::vector<char> sendBuffer;
+    size_t sendOffset = 0;
     ConnectionContext() noexcept = default;
     ~ConnectionContext() noexcept {
         if (hTimer) {
@@ -76,10 +80,15 @@ struct ConnectionContext {
 
 struct PER_IO_OPERATION_DATA {
     WSAOVERLAPPED overlapped;
-    WSABUF buffer;
+    WSABUF wsabuf;
     char data[1024];
-    DWORD bytesRecv;
+    DWORD bytesTransferred;
+    IoOpType opType;                    // RECV or SEND operation
     ConnectionContext* connCtx;
+    
+    PER_IO_OPERATION_DATA() : opType(IoOpType::RECV), connCtx(nullptr), bytesTransferred(0) {
+        ZeroMemory(&overlapped, sizeof(WSAOVERLAPPED));
+    }
 };
 
 class Server{
@@ -105,5 +114,15 @@ class Server{
         }
 
         void start(int threads=-1, int timeout=30000);
+        
+        void setRateLimitingEnabled(bool enabled) { ipLimiter.setEnabled(enabled); }
+        bool isRateLimitingEnabled() const { return ipLimiter.isEnabled(); }
+        
+        void shutdown() {
+            if (serverSocket != INVALID_SOCKET) {
+                closesocket(serverSocket);
+                serverSocket = INVALID_SOCKET;
+            }
+        }
 
 };

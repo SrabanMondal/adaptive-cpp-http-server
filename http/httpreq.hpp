@@ -1,4 +1,5 @@
 #include<string>
+#include<string_view>
 #include<unordered_map>
 #include<vector>
 #include "json.hpp"
@@ -69,5 +70,4 @@ class HttpRequest{
     private:
         void parseHeaders(const std::string& req);
         void parseQueryParams(const std::string& query);
-        std::string getHeader(const std::string& req, const std::string& key);
 };

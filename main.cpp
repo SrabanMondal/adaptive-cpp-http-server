@@ -2,30 +2,67 @@
 #include<filehandle.hpp>
 #include <csignal>
 #include <cstdlib>
-#include <unistd.h>
+#include <atomic>
 
-struct Context{
-    SOCKET sock;
-};
+// Global shutdown flag — set by signal handler, checked by cleanup ──
+static std::atomic<bool> g_shutdown{false};
 
-Context* stx = nullptr;
+// Global pointers for signal handler access (signal handlers can't use locals)
+static Server*  g_server = nullptr;
+static FileHandler* g_ft = nullptr;
+
+// Signal handler
 void handle_exit(int signum) {
-    if(stx){
-        closesocket(stx->sock);
-        WSACleanup();
-        _exit(1);
+    bool expected = false;
+    if (!g_shutdown.compare_exchange_strong(expected, true)) {
+        return;
     }
+
+    // Close the listening socket — this breaks the accept() loop
+    if (g_server) {
+        g_server->shutdown();
+    }
+
+    // Clear file caches (releases preloaded memory)
+    if (g_ft) {
+        g_ft->clear();
+    }
+
+    WSACleanup();
+    std::exit(0);
 }
 
 
 int main(){
     Router router = Router();
-    Server server = Server(3000, router);
-    Context c = {server.serverSocket};
-    FileHandler ft = FileHandler();
-    stx = &c;
+    Server server(3000, router);
+    FileHandler ft;
 
-    
+    g_server = &server;
+    g_ft     = &ft;
+
+    // Register signal handlers BEFORE starting the server
+    // server.start() is blocking — if we register after, signals won't work.
+    std::signal(SIGINT, handle_exit);
+    std::signal(SIGTERM, handle_exit);
+
+    // Preload static files into memory at startup
+    ft.preloadFiles({
+        "site/index.html",
+        "site/about.html",
+        "site/neon.css",
+        "site/app.js",
+        "site/assets/hero.jpg",
+        "favicon.ico"
+    }, {
+        false,  // text
+        false,  // text
+        false,  // text
+        false,  // text
+        true,   // binary
+        true    // binary
+    });
+
     router.addRoute("/",HttpMethod::GET, [&](const HttpRequest& req){
         std::string data = ft.readTextFile("site/index.html");
         return HtmlResponse(data);
@@ -86,10 +123,11 @@ int main(){
         return JsonResponse(nojson, 400);
     });
 
+    constexpr bool ENABLE_RATE_LIMITING = false;
+    server.setRateLimitingEnabled(ENABLE_RATE_LIMITING);
+
     server.bindAndListen();
     server.start(-1);
-    std::signal(SIGINT, handle_exit);
-    std::signal(SIGTERM, handle_exit);
     return 0;
 }
 

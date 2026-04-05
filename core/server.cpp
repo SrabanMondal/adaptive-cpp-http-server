@@ -7,6 +7,59 @@
 #include "logging.hpp"
 using namespace std;
 
+// Build complete response buffer (headers + body) into ctx.sendBuffer
+static void prepareSendBuffer(ConnectionContext& ctx, const HttpResponse& res) {
+    std::string hdrs = res.headers();
+    ctx.sendBuffer.clear();
+    ctx.sendBuffer.reserve(hdrs.size() + res.body.size());
+    ctx.sendBuffer.insert(ctx.sendBuffer.end(), hdrs.begin(), hdrs.end());
+    ctx.sendBuffer.insert(ctx.sendBuffer.end(), res.body.begin(), res.body.end());
+    ctx.sendOffset = 0;
+}
+
+// Post an async WSARecv on the given socket using the ioData structure
+static void postRecv(SOCKET sock, PER_IO_OPERATION_DATA* ioData) {
+    ZeroMemory(&ioData->overlapped, sizeof(WSAOVERLAPPED));
+    ioData->wsabuf.buf = ioData->data;
+    ioData->wsabuf.len = sizeof(ioData->data);
+    ioData->opType = IoOpType::RECV;
+    DWORD flags = 0;
+    int wsares = WSARecv(sock, &ioData->wsabuf, 1, NULL, &flags, &ioData->overlapped, NULL);
+    if (wsares == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
+        // Will be handled on next completion as error
+    }
+}
+
+// Initiate async WSASend for remaining data in ctx.sendBuffer
+static void postSend(SOCKET sock, PER_IO_OPERATION_DATA* ioData, ConnectionContext& ctx) {
+    DWORD bytesToSend = static_cast<DWORD>(ctx.sendBuffer.size() - ctx.sendOffset);
+    ioData->wsabuf.buf = ctx.sendBuffer.data() + ctx.sendOffset;
+    ioData->wsabuf.len = bytesToSend;
+    ioData->opType = IoOpType::SEND;
+    ioData->bytesTransferred = 0;
+    ZeroMemory(&ioData->overlapped, sizeof(WSAOVERLAPPED));
+    
+    DWORD bytesSent = 0;
+    int wsares = WSASend(sock, &ioData->wsabuf, 1, &bytesSent, 0, &ioData->overlapped, NULL);
+    if (wsares == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
+        // Send error — connection will be cleaned up on next completion
+    }
+}
+
+// Cleanup connection resources
+static void cleanupConnection(ConnectionContext* connCtx, PER_IO_OPERATION_DATA* ioData) {
+    if (connCtx->hTimer) {
+        DeleteTimerQueueTimer(NULL, connCtx->hTimer, INVALID_HANDLE_VALUE);
+        connCtx->hTimer = NULL;
+    }
+    if (connCtx->sock != INVALID_SOCKET) {
+        closesocket(connCtx->sock);
+        connCtx->sock = INVALID_SOCKET;
+    }
+    delete connCtx;
+    delete ioData;
+}
+
 void Server::workerThread(HANDLE hiocp){
     DWORD bytesTransferred;
     ULONG_PTR completionKey;
@@ -15,20 +68,39 @@ void Server::workerThread(HANDLE hiocp){
     while(true){
         BOOL ok = GetQueuedCompletionStatus(hiocp, &bytesTransferred, &completionKey, (LPOVERLAPPED*)&ioData, INFINITE);
         SOCKET clientSocket = (SOCKET)completionKey;
+        
+        // Handle disconnected client
         if(!ok || bytesTransferred==0){
-            //log("Client Disconnected");
-            activeClients--;
-            closesocket(clientSocket);
-            if (ioData->connCtx->hTimer) {
-                DeleteTimerQueueTimer(NULL, ioData->connCtx->hTimer, INVALID_HANDLE_VALUE);
-                ioData->connCtx->hTimer = NULL;
+            if (ioData && ioData->connCtx) {
+                activeClients--;
+                cleanupConnection(ioData->connCtx, ioData);
             }
-            delete ioData->connCtx;
-            delete ioData;
             continue;
         }
 
         auto& ctx = *ioData->connCtx;
+
+        // === SEND COMPLETION ===
+        if (ioData->opType == IoOpType::SEND) {
+            ctx.sendOffset += bytesTransferred;
+            
+            if (ctx.sendOffset < ctx.sendBuffer.size()) {
+                // Partial send — post remaining data
+                postSend(clientSocket, ioData, ctx);
+            } else {
+                // Send complete — reset connection state and post recv
+                ctx.headerBuffer.clear();
+                ctx.bodyBuffer.clear();
+                ctx.expectedBody = 0;
+                ctx.headerComplete = false;
+                ctx.sendBuffer.clear();
+                ctx.sendOffset = 0;
+                postRecv(clientSocket, ioData);
+            }
+            continue;
+        }
+
+        // === RECV COMPLETION ===
         auto now = std::chrono::steady_clock::now();
 
         bool allowed = true;
@@ -37,14 +109,14 @@ void Server::workerThread(HANDLE hiocp){
             logerr("Adaptive rate limit exceeded, sending 429");
             std::string json = R"({"message":"Rate Limit Exceeded. Try again later."})";
             HttpResponse res = JsonResponse(json, 429);
-            send(clientSocket, res.headers().c_str(), res.headers().size(), 0);
-            send(clientSocket, res.body.data(), res.body.size(), 0);
+            prepareSendBuffer(ctx, res);
+            postSend(clientSocket, ioData, ctx);
             continue;
         }
 
-        if (ioData->connCtx->hTimer) {
-            DeleteTimerQueueTimer(NULL, ioData->connCtx->hTimer, INVALID_HANDLE_VALUE);
-            ioData->connCtx->hTimer = NULL;
+        if (ctx.hTimer) {
+            DeleteTimerQueueTimer(NULL, ctx.hTimer, INVALID_HANDLE_VALUE);
+            ctx.hTimer = NULL;
         }
 
         CreateTimerQueueTimer(
@@ -53,14 +125,13 @@ void Server::workerThread(HANDLE hiocp){
             [](PVOID lpParam, BOOLEAN) {
                 auto* ctx = (ConnectionContext*)lpParam;
                 closesocket(ctx->sock);
-                //log("Client timed out (30s inactivity)");
             },
             (PVOID)&ctx,
             30000, 0, WT_EXECUTEONLYONCE
         );
 
-        string  chunk(ioData->data, bytesTransferred);
-        if (ctx.headerComplete==false){
+        string chunk(ioData->data, bytesTransferred);
+        if (ctx.headerComplete == false){
             ctx.headerBuffer += chunk;
             size_t pos = ctx.headerBuffer.find("\r\n\r\n");
             if (pos != string::npos) {
@@ -78,26 +149,15 @@ void Server::workerThread(HANDLE hiocp){
         else{
             ctx.bodyBuffer.insert(ctx.bodyBuffer.end(), chunk.begin(), chunk.end());
         }
+        
         if (ctx.headerComplete && ctx.bodyBuffer.size() >= ctx.expectedBody) {
-            //log("Request recieved:");
-            //log(ctx.headerBuffer);
-            //log("--------------");
             HttpRequest req(ctx.headerBuffer, ctx.bodyBuffer);
             HttpResponse res = router.handleRoute(req);
-            send(clientSocket, res.headers().c_str(), res.headers().size(),0);
-            send(clientSocket, res.body.data(), res.body.size(),0);
-            ctx.headerBuffer.clear();
-            ctx.bodyBuffer.clear();
-            ctx.expectedBody = 0;
-            ctx.headerComplete = false;
-        }
-        ZeroMemory(&ioData->overlapped, sizeof(WSAOVERLAPPED));
-        ioData->buffer.buf = ioData->data;
-        ioData->buffer.len = sizeof(ioData->data);
-        DWORD flags = 0;
-        int wsares = WSARecv(clientSocket, &ioData->buffer, 1, NULL, &flags, &ioData->overlapped, NULL);
-        if (wsares == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
-            logerr("Error connecting client");
+            prepareSendBuffer(ctx, res);
+            postSend(clientSocket, ioData, ctx);
+        } else {
+            // Request not complete yet — post another recv
+            postRecv(clientSocket, ioData);
         }
     }
 }
@@ -166,11 +226,12 @@ void Server::start(int numThreads, int timeout){
         );
         PER_IO_OPERATION_DATA* ioData = new PER_IO_OPERATION_DATA;
         ZeroMemory(&ioData->overlapped, sizeof(WSAOVERLAPPED));
-        ioData->buffer.buf = ioData->data;
-        ioData->buffer.len = sizeof(ioData->data);
+        ioData->wsabuf.buf = ioData->data;
+        ioData->wsabuf.len = sizeof(ioData->data);
+        ioData->opType = IoOpType::RECV;
         ioData->connCtx = connCtx;
         DWORD flags = 0;
-        int wsares = WSARecv(clientSock, &ioData->buffer, 1, NULL, &flags, &ioData->overlapped, NULL);
+        int wsares = WSARecv(clientSock, &ioData->wsabuf, 1, NULL, &flags, &ioData->overlapped, NULL);
         if (wsares == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
             logerr("Error connecting client");
         }

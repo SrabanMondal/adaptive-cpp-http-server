@@ -1,83 +1,110 @@
 #include "httpreq.hpp"
-#include<vector>
-#include<sstream>
-#include <ranges>
-#include<iostream>
+#include <string_view>
+#include <charconv>
+#include <iostream>
 using namespace std;
 
+namespace {
 
-vector<string> split(const string &s, char delim) {
-    vector<string> elems;
-    for(auto &&e: s|views::split(delim)){
-        elems.emplace_back(e.begin(),e.end());
-    }
-    return elems;
+constexpr string_view trim(string_view sv) {
+    size_t start = sv.find_first_not_of(" \t\r\n");
+    if (start == string_view::npos) return {};
+    size_t end = sv.find_last_not_of(" \t\r\n");
+    return sv.substr(start, end - start + 1);
 }
 
-string HttpRequest::getHeader(const string& req, const string& key){
-    size_t pos = req.find(key);
-    if (pos != std::string::npos) {
-        pos += key.size();
-        size_t end = req.find("\r\n", pos);
-        std::string value = req.substr(pos, end - pos);
-        return value;
-    }
-    return "";
+HttpMethod parseMethod(string_view method) {
+    if      (method == "GET")    return HttpMethod::GET;
+    else if (method == "POST")   return HttpMethod::POST;
+    else if (method == "PUT")    return HttpMethod::PUT;
+    else if (method == "DELETE") return HttpMethod::DEL;
+    else                         return HttpMethod::POST;  // default fallback
 }
-void HttpRequest::parseQueryParams(const string& query){
-    auto pairs = split(query,'&');
-    for(auto& p: pairs){
-        auto q = split(p,'=');
-        if(q.size()==2){
-            queryParams[q[0]]=q[1];
-        }
+
+size_t parseSizeT(string_view sv) {
+    size_t result = 0;
+    size_t start = sv.find_first_not_of(" \t");
+    if (start == string_view::npos) return 0;
+    sv = sv.substr(start);
+    std::from_chars(sv.data(), sv.data() + sv.size(), result);
+    return result;
+}
+}
+
+void HttpRequest::parseQueryParams(const string& query) {
+    if (query.empty()) return;
+    string_view qv(query);
+    size_t pos = 0;
+    while (pos < qv.size()) {
+        size_t eq = qv.find('=', pos);
+        if (eq == string_view::npos) break;
+        string_view key = qv.substr(pos, eq - pos);
+
+        size_t amp = qv.find('&', eq + 1);
+        size_t valEnd = (amp == string_view::npos) ? qv.size() : amp;
+        string_view value = qv.substr(eq + 1, valEnd - (eq + 1));
+
+        queryParams[string(key)] = string(value);
+
+        pos = (amp == string_view::npos) ? qv.size() : amp + 1;
     }
 }
-void HttpRequest::parseHeaders(const string& req){
+
+void HttpRequest::parseHeaders(const string& req) {
     if (req.empty()) return;
-    auto pos = req.find("\r\n");
-    if(pos==string::npos) return;
-    string reqLine = req.substr(0,pos);
-    vector<string> parts = split(reqLine,' ');
-   
-    if(parts.size()<2) return;
+    string_view rv(req);
 
-    if(parts[0]=="GET"){
-        method=HttpMethod::GET;
-    }
-    else if(parts[0]=="POST"){
-        method=HttpMethod::POST;
-    }
-    else if(parts[0]=="PUT"){
-        method=HttpMethod::PUT;
-    }
-    else if(parts[0]=="DELETE"){
-        method=HttpMethod::DEL;
-    }
-    else{
-        method = HttpMethod::POST;
-    }
-    string fullpath = parts[1];
+    size_t lineEnd = rv.find("\r\n");
+    if (lineEnd == string_view::npos) return;
+    string_view reqLine = rv.substr(0, lineEnd);
 
-    auto qpos = fullpath.find('?');
-    if(qpos!=string::npos){
-        path = fullpath.substr(0,qpos);
-        query = fullpath.substr(qpos+1);
+    size_t space1 = reqLine.find(' ');
+    if (space1 == string_view::npos) return;
+    string_view methodSv = trim(reqLine.substr(0, space1));
+    method = parseMethod(methodSv);
+
+    size_t pathStart = space1 + 1;
+    size_t space2 = reqLine.find(' ', pathStart);
+    string_view fullPath;
+    if (space2 == string_view::npos) {
+        fullPath = trim(reqLine.substr(pathStart));
+    } else {
+        fullPath = trim(reqLine.substr(pathStart, space2 - pathStart));
+    }
+
+    size_t qpos = fullPath.find('?');
+    if (qpos != string_view::npos) {
+        path  = string(fullPath.substr(0, qpos));
+        query = string(fullPath.substr(qpos + 1));
         parseQueryParams(query);
-    }
-    else{
-        path = fullpath;
-        query = "";
-    }
-
-    string cl = getHeader(req,"Content-Length: ");
-    if(cl.empty()){
-        contentLength = 0;
-    }
-    else{
-        contentLength = (size_t)std::atoi(cl.c_str());
+    } else {
+        path  = string(fullPath);
+        query.clear();
     }
 
-    contentType = getHeader(req,"Content-Type: ");
+    size_t headerPos = lineEnd + 2;
+    contentLength = 0;
+    contentType.clear();
 
+    while (headerPos < rv.size()) {
+        size_t nextLine = rv.find("\r\n", headerPos);
+        if (nextLine == string_view::npos) break;
+        if (nextLine == headerPos) break;
+
+        string_view headerLine = rv.substr(headerPos, nextLine - headerPos);
+
+        size_t colon = headerLine.find(':');
+        if (colon != string_view::npos) {
+            string_view key   = trim(headerLine.substr(0, colon));
+            string_view value = trim(headerLine.substr(colon + 1));
+
+            if (key == "Content-Length") {
+                contentLength = parseSizeT(value);
+            } else if (key == "Content-Type") {
+                contentType = string(value);
+            }
+        }
+
+        headerPos = nextLine + 2;
+    }
 }
